@@ -5,7 +5,7 @@
         <xpath expr="//div[@class='cash-move d-flex flex-column']" position="inside">
             <div class="form-floating mb-3">
                 <select class="form-select" t-model="state.branchJournalId">
-                    <option t-foreach="pos.branchJournals" t-as="journal" t-att-value="journal.id">
+                    <option t-foreach="pos.branchJournals" t-as="journal" t-att-value="journal.id" t-key="journal.id">
                         <t t-esc="journal.name"/>
                     </option>
                 </select>

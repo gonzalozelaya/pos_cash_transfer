@@ -1,73 +1,90 @@
-/** @odoo-module */
+/** @odoo-module **/
 
-import { registry } from "@web/core/registry";
-import { CashMovePopup as OriginalCashMovePopup } from "@point_of_sale/app/navbar/cash_move_popup/cash_move_popup";
+import { patch } from "@web/core/utils/patch";
+import { CashMovePopup } from "@point_of_sale/app/navbar/cash_move_popup/cash_move_popup";
+import { usePos } from "@point_of_sale/app/store/pos_hook";
 
-export class CashMovePopup extends OriginalCashMovePopup {
+patch(CashMovePopup.prototype, {
     setup() {
+        // Llama al método original de setup
         super.setup();
 
-        // Cargar los diarios de sucursales
-        this.pos.branchJournals = this.pos.branchJournals || [];
-        if (!this.pos.branchJournals.length) {
-            this.loadBranchJournals();
+        // Obtiene el contexto del POS
+        this.pos = usePos();
+
+        // Inicializa `branchJournals` si no está definido
+        if (!this.pos.branchJournals) {
+            this.pos.branchJournals = [];
         }
 
-        // Añadir el estado para el selector de diario
+        // Configura el estado inicial
         this.state.branchJournalId = this.pos.branchJournals.length
             ? this.pos.branchJournals[0].id
             : null;
-    }
+
+        // Carga los diarios si aún no están disponibles
+        if (!this.pos.branchJournals.length) {
+            this.loadBranchJournals();
+        }
+    },
 
     async loadBranchJournals() {
-        const branchJournals = await this.orm.searchRead(
-            "account.journal",
-            [["type", "=", "cash"]],
-            ["id", "name"]
-        );
-        this.pos.branchJournals = branchJournals;
-        if (branchJournals.length && !this.state.branchJournalId) {
-            this.state.branchJournalId = branchJournals[0].id;
+        try {
+            const branchJournals = await this.orm.searchRead(
+                "account.journal",
+                [["type", "=", "cash"]],
+                ["id", "name"]
+            );
+            this.pos.branchJournals = branchJournals;
+
+            // Configura el diario predeterminado después de cargar los diarios
+            if (branchJournals.length) {
+                this.state.branchJournalId = branchJournals[0].id;
+            }
+        } catch (error) {
+            console.error("Error loading branch journals:", error);
+            this.notification.add("Failed to load branch journals.", 3000);
         }
-    }
+    },
 
     async confirm() {
-        const amount = parseFloat(this.state.amount);
+        const amount = parseFloat(this.state.amount || 0);
         const formattedAmount = this.env.utils.formatCurrency(amount);
+
         if (!amount || !this.state.branchJournalId) {
-            this.notification.add(_t("Please specify an amount and branch journal."), 3000);
+            this.notification.add("Please specify an amount and branch journal.", 3000);
             return this.props.close();
         }
-
-        const type = this.state.type;
-        const translatedType = _t(type);
+        const type = this.state.type || "out";
+        //const translatedType = this.env._t(type);
         const extras = {
             formattedAmount,
-            translatedType,
+            type,
             branch_journal_id: this.state.branchJournalId,
         };
-        const reason = this.state.reason.trim();
+        const reason = this.state.reason ? this.state.reason.trim() : "";
 
-        await this.orm.call("pos.session", "try_cash_in_out", [
-            [this.pos.pos_session.id],
-            type,
-            amount,
-            reason,
-            extras,
-        ]);
+        try {
+            await this.orm.call("pos.session", "try_cash_in_out", [
+                [this.pos.pos_session.id],
+                type,
+                amount,
+                reason,
+                extras,
+            ]);
+            await this.pos.logEmployeeMessage(
+                `("Transfer Amount"): ${formattedAmount}`,
+                "CASH_DRAWER_ACTION"
+            );
 
-        await this.pos.logEmployeeMessage(
-            `${_t("Transfer")} ${translatedType} - ${_t("Amount")}: ${formattedAmount}`,
-            "CASH_DRAWER_ACTION"
-        );
-
-        this.props.close();
-        this.notification.add(
-            _t("Successfully transferred %s of %s.", type, formattedAmount),
-            3000
-        );
-    }
-}
-
-// Registra el popup personalizado
-registry.category("popups").add("CashMovePopup", CashMovePopup);
+            this.props.close();
+            this.notification.add(
+                `Successfully transferred ${type} of ${formattedAmount}.`,
+                3000
+            );
+        } catch (error) {
+            console.error("Error during cash transfer:", error);
+            this.notification.add("Failed to process cash transfer.", 3000);
+        }
+    },
+});
