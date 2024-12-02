@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="pos_cash_transfer.CashMovePopup" t-inherit="point_of_sale.CashMovePopup" t-inherit-mode="extension">
+        <!-- Agregar el selector de diario -->
+        <xpath expr="//div[@class='cash-move d-flex flex-column']" position="inside">
+            <div class="form-floating mb-3">
+                <select class="form-select" t-model="state.branchJournalId">
+                    <option t-foreach="pos.branchJournals" t-as="journal" t-att-value="journal.id">
+                        <t t-esc="journal.name"/>
+                    </option>
+                </select>
+                <label for="branchJournalId">Select Branch Journal</label>
+            </div>
+        </xpath>
+        <!-- Deshabilitar el botón Confirm si falta el diario -->
+        <xpath expr="//button[@class='button confirm btn btn-lg btn-primary']" position="attributes">
+            <attribute name="t-att-disabled">!env.utils.isValidFloat(state.amount) || !state.branchJournalId</attribute>
+        </xpath>
+    </t>
+</templates>
