@@ -1,0 +1,17 @@
+<odoo>
+    <data>
+        <!-- Heredando la vista base.view_company_form -->
+        <record id="view_company_form_inherit_cash_transfer" model="ir.ui.view">
+            <field name="name">res.company.form.inherit.cash.transfer</field>
+            <field name="model">res.company</field>
+            <field name="inherit_id" ref="base.view_company_form"/>
+            <field name="arch" type="xml">
+                <!-- Añadiendo los nuevos campos debajo del campo 'phone' -->
+                <xpath expr="//field[@name='currency_id']" position="after">
+                    <field name="cash_journal"/>
+                    <field name="transfer_journal"/>
+               </xpath>
+            </field>
+        </record>
+    </data>
+</odoo>

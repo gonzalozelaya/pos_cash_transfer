@@ -8,10 +8,12 @@ patch(CashMovePopup.prototype, {
     setup() {
         // Llama al método original de setup
         super.setup();
-
+        
         // Obtiene el contexto del POS
         this.pos = usePos();
-
+        this.state.destinationCompanyId = null; // Nuevo estado para la compañía de destino
+        this.state.destinationCompanies = [];
+        this.state.method = 'payments'
         // Inicializa `branchJournals` si no está definido
         if (!this.pos.branchJournals) {
             this.pos.branchJournals = [];
@@ -26,65 +28,67 @@ patch(CashMovePopup.prototype, {
         if (!this.pos.branchJournals.length) {
             this.loadBranchJournals();
         }
+        this.loadDestinationCompanies();
     },
-
+    
+    async loadDestinationCompanies() {
+        try {
+            // Llamar al método personalizado del backend
+            const companies = await this.orm.call("res.company", "get_all_companies", []);
+            this.state.destinationCompanies = companies.length ? companies : [];
+        } catch (error) {
+            console.error("Error loading companies:", error);
+            this.state.destinationCompanies = []; // Mantener un arreglo vacío en caso de error
+        }
+    },
     async loadBranchJournals() {
         try {
-            const branchJournals = await this.orm.searchRead(
-                "account.journal",
-                [["type", "=", "cash"]],
-                ["id", "name"]
+            const branchJournals = await this.orm.call(
+                "res.company",
+                "get_all_journals",
+                [] // No se requieren argumentos
             );
-            this.pos.branchJournals = branchJournals;
-
-            // Configura el diario predeterminado después de cargar los diarios
-            if (branchJournals.length) {
-                this.state.branchJournalId = branchJournals[0].id;
+    
+            if (branchJournals && branchJournals.length) {
+                this.pos.branchJournals = branchJournals;
+                this.state.branchJournalId = branchJournals[0].id; // Configura el primero como predeterminado
+            } else {
+                this.pos.branchJournals = [];
+                this.state.branchJournalId = null;
+                this.notification.add("No transfer journals found.", 3000);
             }
         } catch (error) {
             console.error("Error loading branch journals:", error);
             this.notification.add("Failed to load branch journals.", 3000);
         }
     },
-
     async confirm() {
         const amount = parseFloat(this.state.amount || 0);
-        const formattedAmount = this.env.utils.formatCurrency(amount);
-
-        if (!amount || !this.state.branchJournalId) {
-            this.notification.add("Please specify an amount and branch journal.", 3000);
+        if (!amount) {
+            this.notification.add("Please specify an amount.", 3000);
             return this.props.close();
         }
-        const type = this.state.type || "out";
-        //const translatedType = this.env._t(type);
+
         const extras = {
-            formattedAmount,
-            type,
             branch_journal_id: this.state.branchJournalId,
+            destination_company_id: this.state.destinationCompanyId,
+            reason: this.state.reason.trim(),
+            payment_type:this.state.method,
         };
-        const reason = this.state.reason ? this.state.reason.trim() : "";
 
         try {
             await this.orm.call("pos.session", "try_cash_in_out", [
                 [this.pos.pos_session.id],
-                type,
+                "out",
                 amount,
-                reason,
+                this.state.reason,
                 extras,
             ]);
-            await this.pos.logEmployeeMessage(
-                `("Transfer Amount"): ${formattedAmount}`,
-                "CASH_DRAWER_ACTION"
-            );
-
-            this.props.close();
-            this.notification.add(
-                `Successfully transferred ${type} of ${formattedAmount}.`,
-                3000
-            );
+            this.notification.add("Transferencia completada con éxito.", 3000);
         } catch (error) {
-            console.error("Error during cash transfer:", error);
-            this.notification.add("Failed to process cash transfer.", 3000);
+            console.error("Ocurrió un error durante la transferencia:", error);
+            this.notification.add("Falla al completar la transferencia.", 3000);
         }
+        this.props.close();
     },
 });
