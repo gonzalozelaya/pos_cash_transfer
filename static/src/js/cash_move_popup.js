@@ -11,9 +11,6 @@ patch(CashMovePopup.prototype, {
         
         // Obtiene el contexto del POS
         this.pos = usePos();
-        this.state.destinationCompanyId = null; // Nuevo estado para la compañía de destino
-        this.state.destinationCompanies = [];
-        this.state.method = 'payments'
         // Inicializa `branchJournals` si no está definido
         if (!this.pos.branchJournals) {
             this.pos.branchJournals = [];
@@ -27,18 +24,6 @@ patch(CashMovePopup.prototype, {
         // Carga los diarios si aún no están disponibles
         if (!this.pos.branchJournals.length) {
             this.loadBranchJournals();
-        }
-        this.loadDestinationCompanies();
-    },
-    
-    async loadDestinationCompanies() {
-        try {
-            // Llamar al método personalizado del backend
-            const companies = await this.orm.call("res.company", "get_all_companies", []);
-            this.state.destinationCompanies = companies.length ? companies : [];
-        } catch (error) {
-            console.error("Error loading companies:", error);
-            this.state.destinationCompanies = []; // Mantener un arreglo vacío en caso de error
         }
     },
     async loadBranchJournals() {
@@ -71,9 +56,8 @@ patch(CashMovePopup.prototype, {
 
         const extras = {
             branch_journal_id: this.state.branchJournalId,
-            destination_company_id: this.state.destinationCompanyId,
             reason: this.state.reason.trim(),
-            payment_type:this.state.method,
+            //payment_type:this.state.method,
         };
 
         try {

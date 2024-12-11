@@ -1,6 +1,5 @@
 from odoo import models, fields, _,api
 from odoo.exceptions import UserError
-import logging
 
 class ResCompany(models.Model):
     _inherit = "res.company"
@@ -38,6 +37,6 @@ class ResCompany(models.Model):
     @api.model
     def get_all_journals(self):
         """Devuelve todos los diarios que sean de tipo efectivo."""
-        cash_journals = self.env['account.journal'].sudo().search([('type', '=', 'cash')])
+        cash_journals = self.env['account.journal'].search([('type', '=', 'cash')])
         return cash_journals.read(['id', 'name'])
 

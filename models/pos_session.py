@@ -1,11 +1,12 @@
-from odoo import models, fields, _, api
+from odoo import models, fields, _,api
 from odoo.exceptions import UserError
 import logging
 
 _logger = logging.getLogger(__name__)
-
 class PosSession(models.Model):
     _inherit = 'pos.session'
+
+    counted_money_final = fields.Monetary(string='Transaction', readonly=True)
     
     @api.depends('payment_method_ids', 'order_ids', 'cash_register_balance_start')
     def _compute_cash_balance(self):
@@ -49,3 +50,92 @@ class PosSession(models.Model):
                 session.cash_register_total_entry_encoding = 0.0
                 session.cash_register_balance_end = 0.0
                 session.cash_register_difference = 0.0
+
+    
+    def try_cash_in_out(self, _type, amount, reason, extras):
+        _logger.info("Starting try_cash_in_out method")
+        _logger.info("Parameters received: _type=%s, amount=%s, reason=%s, extras=%s", _type, amount, reason, extras)
+        sign = 1 if _type == 'in' else -1
+        sessions = self.filtered('cash_journal_id')
+        if not sessions:
+            raise UserError(_("There is no cash payment method for this PoS Session."))
+        for session in sessions:
+            if not session.cash_journal_id.default_account_id:
+                raise UserError(_("The cash journal must have a default account configured."))
+            if not extras.get('branch_journal_id'):
+                raise UserError(_("A branch journal must be specified for the cash transfer."))
+            branch_journal_id = extras['branch_journal_id']
+            try:
+                branch_journal_id = int(extras['branch_journal_id'])
+            except ValueError:
+                raise UserError(_("Invalid branch journal ID: %s") % extras['branch_journal_id'])
+            branch_journal = self.env['account.journal'].browse(branch_journal_id)
+            if not branch_journal.default_account_id:
+                raise UserError(_("The selected branch journal must have a default account configured."))
+            payment_out = self.env['account.payment'].create({
+                'journal_id': session.cash_journal_id.id,
+                'date': fields.Date.context_today(self),
+                'ref': f"{session.name} - Salida de efectivo a: {branch_journal.name} - {reason}",
+                'amount': amount,
+                'destination_journal_id': branch_journal.id,
+                'payment_type': 'outbound',
+                'pos_session_id': session.id, 
+                'is_internal_transfer': True,
+            })
+            payment_out.action_post()
+    def post_closing_cash_details(self, counted_cash):
+        result = super(PosSession, self).post_closing_cash_details(counted_cash)
+        self.counted_money_final = counted_cash
+        _logger.info("Starting post_closing_cash_details method")
+        _logger.info(f"Amount: {counted_cash}")
+        _logger.info(f"Relevant data: Balance end:{self.cash_register_balance_end}----Balance Real:{self.cash_register_balance_end_real}")
+        balance_real = 0
+        if counted_cash > 10000:
+            balance_real = counted_cash - 10000
+        else:
+            balance_real = counted_cash
+        sessions = self.filtered('cash_journal_id')
+        if not sessions:
+            raise UserError(_("There is no cash payment method for this PoS Session."))
+        for session in sessions:
+            if not session.cash_journal_id.default_account_id:
+                raise UserError(_("The cash journal must have a default account configured."))                
+            try:
+                destination_company = self.env['res.company'].browse(1).sudo()
+            except ValueError:
+                raise UserError(_("Invalid destination company ID: %s") % destination_company_id)
+            if not destination_company.exists():
+                raise UserError(_("The selected destination company does not exist or was deleted."))
+            transfer_journal = self.env.company.transfer_journal
+            if not transfer_journal:
+                raise UserError("La compania no tiene seleccionada una cuenta de transferencias")
+            _logger.info("Creating transfer in origin company: %s", self.env.company.name)
+            payment_date = self.start_at.date() if self.start_at else fields.Date.context_today(self)
+            payment_out = self.env['account.payment'].create({
+                'journal_id': session.cash_journal_id.id,
+                'date': payment_date,
+                'ref': f"{session.name} - Transferencia saliente a: {destination_company.name}",
+                'amount': balance_real,
+                'destination_journal_id': transfer_journal.id,
+                'payment_type': 'outbound',
+                'pos_session_id': session.id, 
+                'is_internal_transfer': True,
+            })
+            payment_out.action_post()
+    
+            # Crear la transferencia en la compañía de destino usando with_company
+            _logger.info("Creating transfer in destination company: %s", destination_company.name)
+            payment_in = self.env['account.payment'].sudo().with_company(destination_company).create({
+                'journal_id': destination_company.cash_journal.id,
+                'date': payment_date,
+                'ref': f"Transferencia entrante de: {self.env.company.name}",
+                'amount': balance_real,
+                'destination_journal_id': destination_company.transfer_journal.id,
+                'payment_type': 'inbound',
+                'is_internal_transfer': True,
+                'pos_session_id': session.id, 
+                'company_id':destination_company.id,
+            })
+            payment_in.action_post()
+        self.cash_register_balance_end_real = counted_cash - balance_real
+        return result

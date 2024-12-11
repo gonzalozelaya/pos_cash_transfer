@@ -123,7 +123,7 @@ class ReportSaleDetails(models.AbstractModel):
         for session in sessions:
             cash_counted = 0
             if session.cash_register_balance_end_real:
-                cash_counted = session.cash_register_balance_end_real
+                cash_counted = session.counted_money_final
             is_cash_method = False
             for payment in payments:
                 account_payments = self.env['account.payment'].search([('pos_session_id', '=', session.id)])
@@ -165,6 +165,7 @@ class ReportSaleDetails(models.AbstractModel):
                             ('pos_session_id', '=', session.id),
                             ('is_internal_transfer', '=', True),
                             ('payment_type', '=', 'outbound'),
+                            ('destination_journal_id','!=',session.company_id.transfer_journal.id),
                         ])
                         cash_in_out_list = []
 
@@ -176,6 +177,7 @@ class ReportSaleDetails(models.AbstractModel):
                         total_transfer_amount = sum(cash_transfers.mapped('amount'))
                         previous_session = self.env['pos.session'].search([('id', '<', session.id), ('state', '=', 'closed'), ('config_id', '=', session.config_id.id)], limit=1)
                         payment['final_count'] = payment['total'] + previous_session.cash_register_balance_end_real + session.cash_real_transaction - total_transfer_amount
+                        _logger.info(f'Final count:  {payment}')
                         payment['money_counted'] = cash_counted
                         payment['money_difference'] = payment['money_counted'] - payment['final_count']
                         cash_moves = self.env['account.bank.statement.line'].search([('pos_session_id', '=', session.id)])
