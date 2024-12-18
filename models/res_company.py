@@ -37,6 +37,9 @@ class ResCompany(models.Model):
     @api.model
     def get_all_journals(self):
         """Devuelve todos los diarios que sean de tipo efectivo."""
-        cash_journals = self.env['account.journal'].search([('type', '=', 'cash')])
+        cash_journals = self.env['account.journal'].search([('type', '=', 'cash'),
+                                                            ('company_id', '=', self.env.company.id),
+                                                            ('use_supplier','=',True)])
+                                                            
         return cash_journals.read(['id', 'name'])
 
