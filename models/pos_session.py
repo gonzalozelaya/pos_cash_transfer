@@ -32,15 +32,19 @@ class PosSession(models.Model):
                 ])
                 _logger.info(f'Cash transfers{cash_transfers}')
                 total_transfer_amount = sum(cash_transfers.mapped('amount'))
+                amount_kept = 0
+                if self.config_id.pos_keep_amount:
+                    amount_kept = self.config_id.pos_keep_amount
+                    
                 _logger.info(f'Total transfer amount{total_transfer_amount}')
                 if session.state == 'closed':
                     session.cash_register_total_entry_encoding = session.cash_real_transaction + total_cash_payment - total_transfer_amount
-                    _logger.info(f'Total: {session.cash_register_total_entry_encoding}')
+                    _logger.info(f'Total entry encoding: {session.cash_register_total_entry_encoding}')
                 else:
                     session.cash_register_total_entry_encoding = (
                         sum(session.statement_line_ids.mapped('amount')) + total_cash_payment - total_transfer_amount
                     )
-    
+                    _logger.info(f'Total entry encoding: {session.cash_register_total_entry_encoding}')
                 session.cash_register_balance_end = (
                     last_session.cash_register_balance_end_real
                     + session.cash_register_total_entry_encoding
@@ -83,23 +87,52 @@ class PosSession(models.Model):
                 'is_internal_transfer': True,
             })
             payment_out.action_post()
-    def post_closing_cash_details(self, counted_cash):
-        result = super(PosSession, self).post_closing_cash_details(counted_cash)
-        self.counted_money_final = counted_cash
+            
+    def post_closing_cash_details(self, data):
+        # Verifica si `data` es un diccionario
+        if isinstance(data, dict):
+            counted_cash = float(data.get('counted_cash', 0.0))  # Extrae `counted_cash`
+            reserve_cash = float(data.get('reserve_cash', 0.0))  # Extrae `reserve_cash`
+        else:
+            # Si `data` no es un diccionario, trata el dato directamente como un número
+            counted_cash = float(data)
+            reserve_cash = 0.0  # Valor predeterminado si no hay `reserve_cash`
+        _logger.info(reserve_cash)
+        if reserve_cash:
+            self.config_id.pos_keep_amount = reserve_cash
+        else:
+            self.config_id.pos_keep_amount = 0
+        # Llama al método original con `counted_cash`
+        self.ensure_one()
+        check_closing_session = self._cannot_close_session()
+        if check_closing_session:
+            return check_closing_session
+
+        if not self.cash_journal_id:
+            # The user is blocked anyway, this user error is mostly for developers that try to call this function
+            raise UserError(_("There is no cash register in this session."))
+    
+        # Lógica adicional
+        self.counted_money_final = counted_cash - reserve_cash
         _logger.info("Starting post_closing_cash_details method")
-        _logger.info(f"Amount: {counted_cash}")
-        _logger.info(f"Relevant data: Balance end:{self.cash_register_balance_end}----Balance Real:{self.cash_register_balance_end_real}")
+        _logger.info(f"Counted Cash: {counted_cash}, Reserve Cash: {reserve_cash}")
+        
         balance_real = 0
-        if counted_cash > 10000:
-            balance_real = counted_cash - 10000
+        if counted_cash > self.config_id.pos_keep_amount:
+            #balance_real = counted_cash - self.config_id.pos_keep_amount
+            balance_real = counted_cash - reserve_cash
         else:
             balance_real = counted_cash
+    
+        _logger.info(f'Balance real: {balance_real}')
+    
         sessions = self.filtered('cash_journal_id')
         if not sessions:
             raise UserError(_("There is no cash payment method for this PoS Session."))
+    
         for session in sessions:
             if not session.cash_journal_id.default_account_id:
-                raise UserError(_("The cash journal must have a default account configured."))                
+                raise UserError(_("The cash journal must have a default account configured."))
             try:
                 destination_company = self.env['res.company'].browse(1).sudo()
             except ValueError:
@@ -108,7 +141,7 @@ class PosSession(models.Model):
                 raise UserError(_("The selected destination company does not exist or was deleted."))
             transfer_journal = self.env.company.transfer_journal
             if not transfer_journal:
-                raise UserError("La compania no tiene seleccionada una cuenta de transferencias")
+                raise UserError("La compañía no tiene seleccionada una cuenta de transferencias")
             _logger.info("Creating transfer in origin company: %s", self.env.company.name)
             payment_date = self.start_at.date() if self.start_at else fields.Date.context_today(self)
             payment_out = self.env['account.payment'].create({
@@ -118,7 +151,7 @@ class PosSession(models.Model):
                 'amount': balance_real,
                 'destination_journal_id': transfer_journal.id,
                 'payment_type': 'outbound',
-                'pos_session_id': session.id, 
+                'pos_session_id': session.id,
                 'is_internal_transfer': True,
             })
             payment_out.action_post()
@@ -133,9 +166,12 @@ class PosSession(models.Model):
                 'destination_journal_id': destination_company.transfer_journal.id,
                 'payment_type': 'inbound',
                 'is_internal_transfer': True,
-                'pos_session_id': session.id, 
-                'company_id':destination_company.id,
+                'pos_session_id': session.id,
+                'company_id': destination_company.id,
             })
             payment_in.action_post()
-        self.cash_register_balance_end_real = counted_cash - balance_real
-        return result
+    
+        # Actualiza el balance real del registro
+        self.cash_register_balance_end_real = self.config_id.pos_keep_amount
+        return {'successful': True}
+

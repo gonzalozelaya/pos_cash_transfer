@@ -1,0 +1,13 @@
+<odoo>
+    <record id="view_account_journal_form_inherit_cash_transfer" model="ir.ui.view">
+        <field name="name">pos.config.form.transfer</field>
+        <field name="model">pos.config</field>
+        <field name="inherit_id" ref="point_of_sale.pos_config_view_form"/>
+        <field name="arch" type="xml">
+            <!-- Inserta el campo después del campo 'name' -->
+            <xpath expr="//setting/field[@name='other_devices']" position="before">
+                <field name="pos_keep_amount"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

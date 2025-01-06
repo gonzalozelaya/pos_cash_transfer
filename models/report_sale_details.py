@@ -26,6 +26,11 @@ class ReportSaleDetails(models.AbstractModel):
         :type session_ids: list of numbers.
         :returns: dict -- Serialised sales.
         """
+        if not config_ids and session_ids:
+            config_ids = self.env['pos.session'].search([('id', 'in', session_ids)]).mapped('config_id.id')
+        _logger.info(config_ids)
+        pos_configs = self.env['pos.config'].browse(config_ids)
+        _logger.info(str(pos_configs.pos_keep_amount))
         domain = [('state', 'in', ['paid', 'invoiced', 'done'])]
         if (session_ids):
             domain = AND([domain, [('session_id', 'in', session_ids)]])
@@ -123,7 +128,7 @@ class ReportSaleDetails(models.AbstractModel):
         for session in sessions:
             cash_counted = 0
             if session.cash_register_balance_end_real:
-                cash_counted = session.counted_money_final
+                cash_counted = session.counted_money_final + session.cash_register_balance_end_real
             is_cash_method = False
             for payment in payments:
                 account_payments = self.env['account.payment'].search([('pos_session_id', '=', session.id)])
@@ -169,16 +174,29 @@ class ReportSaleDetails(models.AbstractModel):
                         ])
                         cash_in_out_list = []
 
+                        if session.cash_register_balance_end_real:
+                             cash_in_out_list.append({
+                                'name': _('Conservado en caja'),
+                                'amount': session.cash_register_balance_end_real
+                            })
+
                         for transfer in cash_transfers:
                             cash_in_out_list.append({
                                 'name': transfer.ref,
                                 'amount': -transfer.amount if transfer.payment_type == 'outbound' else transfer.amount,
                             })
+                        pos_keep_amount = self.env['pos.session'].search([('id', 'in', session_ids)],limit=1)
+                        amount_kept = 0
+                        _logger.info(pos_keep_amount.config_id.pos_keep_amount)
+                        if pos_keep_amount:
+                            amount_kept = pos_keep_amount.config_id.pos_keep_amount
+                            
                         total_transfer_amount = sum(cash_transfers.mapped('amount'))
                         previous_session = self.env['pos.session'].search([('id', '<', session.id), ('state', '=', 'closed'), ('config_id', '=', session.config_id.id)], limit=1)
                         payment['final_count'] = payment['total'] + previous_session.cash_register_balance_end_real + session.cash_real_transaction - total_transfer_amount
                         _logger.info(f'Final count:  {payment}')
                         payment['money_counted'] = cash_counted
+                        
                         payment['money_difference'] = payment['money_counted'] - payment['final_count']
                         cash_moves = self.env['account.bank.statement.line'].search([('pos_session_id', '=', session.id)])
                         
@@ -190,6 +208,7 @@ class ReportSaleDetails(models.AbstractModel):
                                 'name': _('Cash Opening'),
                                 'amount': session.cash_register_balance_start,
                             })
+                        
                         for cash_move in cash_moves:
                             if cash_move.amount > 0:
                                 cash_in_count += 1
