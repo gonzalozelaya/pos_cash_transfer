@@ -177,7 +177,7 @@ class ReportSaleDetails(models.AbstractModel):
                         if session.cash_register_balance_end_real:
                              cash_in_out_list.append({
                                 'name': _('Conservado en caja'),
-                                'amount': session.cash_register_balance_end_real
+                                'amount': -1 * session.cash_register_balance_end_real
                             })
 
                         for transfer in cash_transfers:
@@ -193,7 +193,7 @@ class ReportSaleDetails(models.AbstractModel):
                             
                         total_transfer_amount = sum(cash_transfers.mapped('amount'))
                         previous_session = self.env['pos.session'].search([('id', '<', session.id), ('state', '=', 'closed'), ('config_id', '=', session.config_id.id)], limit=1)
-                        payment['final_count'] = payment['total'] + previous_session.cash_register_balance_end_real + session.cash_real_transaction - total_transfer_amount
+                        payment['final_count'] = payment['total'] + previous_session.cash_register_balance_end_real + session.cash_real_transaction - total_transfer_amount - session.cash_register_balance_end_real
                         _logger.info(f'Final count:  {payment}')
                         payment['money_counted'] = cash_counted
                         

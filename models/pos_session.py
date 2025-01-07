@@ -33,16 +33,16 @@ class PosSession(models.Model):
                 _logger.info(f'Cash transfers{cash_transfers}')
                 total_transfer_amount = sum(cash_transfers.mapped('amount'))
                 amount_kept = 0
-                if self.config_id.pos_keep_amount:
-                    amount_kept = self.config_id.pos_keep_amount
+                if session.cash_register_balance_end_real:
+                    amount_kept = session.cash_register_balance_end_real
                     
                 _logger.info(f'Total transfer amount{total_transfer_amount}')
                 if session.state == 'closed':
-                    session.cash_register_total_entry_encoding = session.cash_real_transaction + total_cash_payment - total_transfer_amount
+                    session.cash_register_total_entry_encoding = session.cash_real_transaction + total_cash_payment - total_transfer_amount - amount_kept
                     _logger.info(f'Total entry encoding: {session.cash_register_total_entry_encoding}')
                 else:
                     session.cash_register_total_entry_encoding = (
-                        sum(session.statement_line_ids.mapped('amount')) + total_cash_payment - total_transfer_amount
+                        sum(session.statement_line_ids.mapped('amount')) + total_cash_payment - total_transfer_amount - amount_kept
                     )
                     _logger.info(f'Total entry encoding: {session.cash_register_total_entry_encoding}')
                 session.cash_register_balance_end = (
