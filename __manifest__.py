@@ -5,7 +5,7 @@
     "data": [
         'views/res_company_views.xml',
         'views/account_journal_views.xml',
-        'views/pos_config.xml'
+        #'views/pos_config.xml'
     ],
     "assets": {
         "point_of_sale._assets_pos": [

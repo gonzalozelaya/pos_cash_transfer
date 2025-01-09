@@ -126,7 +126,7 @@ class ReportSaleDetails(models.AbstractModel):
             payment['count'] = False
 
         for session in sessions:
-            cash_counted = 0
+            cash_counted = session.counted_money_final + session.cash_register_balance_end_real
             if session.cash_register_balance_end_real:
                 cash_counted = session.counted_money_final + session.cash_register_balance_end_real
             is_cash_method = False
@@ -192,6 +192,7 @@ class ReportSaleDetails(models.AbstractModel):
                             amount_kept = pos_keep_amount.config_id.pos_keep_amount
                             
                         total_transfer_amount = sum(cash_transfers.mapped('amount'))
+                        _logger.info(f'total_transfer_amount: {total_transfer_amount}')
                         previous_session = self.env['pos.session'].search([('id', '<', session.id), ('state', '=', 'closed'), ('config_id', '=', session.config_id.id)], limit=1)
                         payment['final_count'] = payment['total'] + previous_session.cash_register_balance_end_real + session.cash_real_transaction - total_transfer_amount - session.cash_register_balance_end_real
                         _logger.info(f'Final count:  {payment}')

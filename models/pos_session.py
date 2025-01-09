@@ -90,14 +90,15 @@ class PosSession(models.Model):
             
     def post_closing_cash_details(self, data):
         # Verifica si `data` es un diccionario
+        _logger.info(f'Data received: {data}')
+
         if isinstance(data, dict):
-            counted_cash = float(data.get('counted_cash', 0.0))  # Extrae `counted_cash`
-            reserve_cash = float(data.get('reserve_cash', 0.0))  # Extrae `reserve_cash`
+            counted_cash = float(str(data.get("counted_cash", "0")).replace(",", "."))
+            reserve_cash = float(str(data.get("reserve_cash", "0")).replace(",", "."))
         else:
             # Si `data` no es un diccionario, trata el dato directamente como un número
             counted_cash = float(data)
             reserve_cash = 0.0  # Valor predeterminado si no hay `reserve_cash`
-        _logger.info(reserve_cash)
         if reserve_cash:
             self.config_id.pos_keep_amount = reserve_cash
         else:
@@ -148,7 +149,7 @@ class PosSession(models.Model):
                 'journal_id': session.cash_journal_id.id,
                 'date': payment_date,
                 'ref': f"{session.name} - Transferencia saliente a: {destination_company.name}",
-                'amount': counted_cash,
+                'amount': balance_real,
                 'destination_journal_id': transfer_journal.id,
                 'payment_type': 'outbound',
                 'pos_session_id': session.id,
@@ -162,7 +163,7 @@ class PosSession(models.Model):
                 'journal_id': destination_company.cash_journal.id,
                 'date': payment_date,
                 'ref': f"Transferencia entrante de: {self.env.company.name}",
-                'amount': counted_cash,
+                'amount': balance_real,
                 'destination_journal_id': destination_company.transfer_journal.id,
                 'payment_type': 'inbound',
                 'is_internal_transfer': True,

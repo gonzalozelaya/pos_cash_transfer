@@ -16,14 +16,13 @@ patch(ClosePosPopup.prototype, {
             return;
         }
 
-        // Lógica personalizada adicional
         if (this.pos.config.cash_control) {
             await this.orm.call("pos.session", "post_closing_cash_details", [
                 this.pos.pos_session.id,
                 {
-                    counted_cash: parseFloat(
+                    counted_cash:parseFloat(String(
                         this.state.payments[this.props.default_cash_details.id]?.counted || 0
-                    ),
+                    ).replace(/\./g, "").replace(",", ".")),
                     reserve_cash: parseFloat(this.state.reserve_cash || 0),
                 },
             ]);
