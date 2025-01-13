@@ -171,6 +171,7 @@ class ReportSaleDetails(models.AbstractModel):
                             ('is_internal_transfer', '=', True),
                             ('payment_type', '=', 'outbound'),
                             ('destination_journal_id','!=',session.company_id.transfer_journal.id),
+                            ('company_id','!=',1),
                         ])
                         cash_in_out_list = []
 
