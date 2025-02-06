@@ -4,6 +4,9 @@ import pytz
 
 from odoo import api, fields, models, _
 from odoo.osv.expression import AND
+
+from itertools import groupby
+from collections import defaultdict
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -236,6 +239,7 @@ class ReportSaleDetails(models.AbstractModel):
                     ('pos_session_id', '=', session.id),
                     ('is_internal_transfer', '=', True),
                     ('payment_type', '=', 'outbound'),
+                    ('company_id','!=',1),
                 ])
                 _logger.info(f"Transferencias - {cash_transfers}")
                 cash_in_out_list = []

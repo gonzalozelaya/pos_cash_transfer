@@ -76,17 +76,40 @@ class PosSession(models.Model):
             branch_journal = self.env['account.journal'].browse(branch_journal_id)
             if not branch_journal.default_account_id:
                 raise UserError(_("The selected branch journal must have a default account configured."))
+            try:
+                destination_company = self.env['res.company'].browse(1).sudo()
+            except ValueError:
+                raise UserError(_("Invalid destination company ID: %s") % destination_company_id)
+            transfer_journal = self.env.company.transfer_journal
+            if not transfer_journal:
+                raise UserError("La compañía no tiene seleccionada una cuenta de transferencias")
             payment_out = self.env['account.payment'].create({
                 'journal_id': session.cash_journal_id.id,
                 'date': fields.Date.context_today(self),
-                'ref': f"{session.name} - Salida de efectivo a: {branch_journal.name} - {reason}",
+                'ref': f"{session.name} - Salida a Proveedor: {reason}",
                 'amount': amount,
-                'destination_journal_id': branch_journal.id,
+                'destination_journal_id': transfer_journal.id,
                 'payment_type': 'outbound',
-                'pos_session_id': session.id, 
+                'pos_session_id': session.id,
                 'is_internal_transfer': True,
             })
             payment_out.action_post()
+    
+            # Crear la transferencia en la compañía de destino usando with_company
+            _logger.info("Creating transfer in destination company: %s", destination_company.name)
+            payment_in = self.env['account.payment'].sudo().with_company(destination_company).create({
+                #'journal_id': destination_company.cash_journal.id,
+                'journal_id': branch_journal.id,
+                'date': fields.Date.context_today(self),
+                'ref': f"Transferencia a proveedores entrante de: {self.env.company.name} - {reason}",
+                'amount': amount,
+                'destination_journal_id': destination_company.transfer_journal.id,
+                'payment_type': 'inbound',
+                'is_internal_transfer': True,
+                'pos_session_id': session.id,
+                'company_id': destination_company.id,
+            })
+            payment_in.action_post()
             
     def post_closing_cash_details(self, data):
         # Verifica si `data` es un diccionario
@@ -115,8 +138,6 @@ class PosSession(models.Model):
     
         # Lógica adicional
         self.counted_money_final = counted_cash - reserve_cash
-        _logger.info("Starting post_closing_cash_details method")
-        _logger.info(f"Counted Cash: {counted_cash}, Reserve Cash: {reserve_cash}")
         
         balance_real = 0
         if counted_cash > self.config_id.pos_keep_amount:
