@@ -173,7 +173,8 @@ class ReportSaleDetails(models.AbstractModel):
                             ('pos_session_id', '=', session.id),
                             ('is_internal_transfer', '=', True),
                             ('payment_type', '=', 'outbound'),
-                            ('destination_journal_id','!=',session.company_id.transfer_journal.id),
+                            ('ref', 'not like', 'Transferencia saliente a: INDUSTRIAS FRIGORIFICAS NORTE GRANDE S.A.'),
+                            #('destination_journal_id','!=',session.company_id.transfer_journal.id),
                             ('company_id','!=',1),
                         ])
                         cash_in_out_list = []
